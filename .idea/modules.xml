@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/edw.iml" filepath="$PROJECT_DIR$/.idea/edw.iml" />
+      <module fileurl="file://$PROJECT_DIR$/flumeinterceptor/flumeinterceptor.iml" filepath="$PROJECT_DIR$/flumeinterceptor/flumeinterceptor.iml" />
+      <module fileurl="file://$PROJECT_DIR$/logcollector/logcollector.iml" filepath="$PROJECT_DIR$/logcollector/logcollector.iml" />
+    </modules>
+  </component>
+</project>
