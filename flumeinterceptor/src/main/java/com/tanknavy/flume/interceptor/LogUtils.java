@@ -35,7 +35,7 @@ public class LogUtils {
         }
 
         //判断json
-        if(!log.trim().startsWith("{") || !log.trim().endsWith("}")){ //json格式{}开头结尾的字符串
+        if(!logContents[1].trim().startsWith("{") || !logContents[1].trim().endsWith("}")){ //json格式{}开头结尾的字符串
             return false;
         }
 
