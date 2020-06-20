@@ -4,6 +4,7 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/edw.iml" filepath="$PROJECT_DIR$/.idea/edw.iml" />
       <module fileurl="file://$PROJECT_DIR$/flumeinterceptor/flumeinterceptor.iml" filepath="$PROJECT_DIR$/flumeinterceptor/flumeinterceptor.iml" />
+      <module fileurl="file://$PROJECT_DIR$/hivefunction/hivefunction.iml" filepath="$PROJECT_DIR$/hivefunction/hivefunction.iml" />
       <module fileurl="file://$PROJECT_DIR$/logcollector/logcollector.iml" filepath="$PROJECT_DIR$/logcollector/logcollector.iml" />
     </modules>
   </component>
