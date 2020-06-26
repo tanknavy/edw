@@ -6,6 +6,7 @@
       <module fileurl="file://$PROJECT_DIR$/flumeinterceptor/flumeinterceptor.iml" filepath="$PROJECT_DIR$/flumeinterceptor/flumeinterceptor.iml" />
       <module fileurl="file://$PROJECT_DIR$/hivefunction/hivefunction.iml" filepath="$PROJECT_DIR$/hivefunction/hivefunction.iml" />
       <module fileurl="file://$PROJECT_DIR$/logcollector/logcollector.iml" filepath="$PROJECT_DIR$/logcollector/logcollector.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spring-boot-echarts-master/spring-boot-echarts.iml" filepath="$PROJECT_DIR$/spring-boot-echarts-master/spring-boot-echarts.iml" />
     </modules>
   </component>
 </project>

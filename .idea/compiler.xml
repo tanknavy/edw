@@ -8,6 +8,7 @@
         <outputRelativeToContentRoot value="true" />
         <module name="hivefunction" />
         <module name="flumeinterceptor" />
+        <module name="spring-boot-echarts" />
         <module name="logcollector" />
       </profile>
     </annotationProcessing>
@@ -16,6 +17,7 @@
       <module name="flumeinterceptor" target="1.8" />
       <module name="hivefunction" target="1.8" />
       <module name="logcollector" target="1.8" />
+      <module name="spring-boot-echarts" target="1.8" />
     </bytecodeTargetLevel>
   </component>
 </project>
