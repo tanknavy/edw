@@ -1,0 +1,208 @@
+Hive Function/UDF
+if(boolean testCondidtion, valueTrue, valueFalse)
+nvl(T value, T default_value)#如果为空返回默认值
+coalesce(v1,v2,...) # 返回第一个不为空的，除非全为空
+case when * then * when * then * ... else end
+assert_true(condition)#如果不等则抛出错误
+explode:
+json_tuple:
+parse_url_tuple
+
+
+
+大数据体系构建数据仓库
+
+
+7)数据采集与同步
+业务数据：
+用户行为数据：
+	行为埋点设计，
+	用户表示体系建立：多屏访问打通（注册前，留存cid(client id)(类似cookie)，App注册前使用设备IMEI，注册登录后使用uid(user)标识用户)
+	
+实战电商平台：分析用户访问路径，各步转化，流失，页面评估，运营效果，商品推荐，反作弊，实时流量大盘监控
+公共属性
+app启动事件：installapps:[],activedapps:[],phones:[],idfa,iemi,os,gps,wifi,appversion
+
+# 全量表(完整数据)，增量表(新增数据)，新增及变化表(新增和变化的数据)，拉链表(新增，变化数据的合并)
+
+--------------------
+# 按照日期(partition)每天一个当天快照
+#stage.tmp // 
+#a partition(dt) //按日期partition, a表每天一个快照
+#两个表full join, 使用coalesce取第一个非空值
+
+insert overwrite table a partition(dt='2019-12-01')
+select 
+	
+	coalesce(tb.id, ta.id) as id, //取第一个非空的值，也可以用case when
+	coalesce(tb.name, ta.name) as name,
+	...
+	from
+	(select * from a where dt='2019-11-30') as ta full join stage.tmp as tb
+	on ta.id = tb.id
+
+//a表一个全量
+insert overwrite table a
+select 
+	coalesce(tb.id,ta.id)
+	...
+	(select * from a) ta full join stage.tmp as tb
+	on ta.id =tb.id
+	
+
+数据质量：
+	流程控制：数据生产，数据采集与同步，数据模型设计，ETL开发，指标体系
+	周期性数据质量监控：数据类型校验，指标交叉校验，指标趋势校验，空值率校验，极值校验，关联校验，唯一性校验，ETL任务时长监控校验
+
+9)数据仓库：维度建模
+代理键：gid
+
+整合不同source的维度：使用代理键(码表？，雪花型？)，是维度建模推荐的，能有效隔离源端边和带来数据仓库结构的不稳定性，也能提高数据检索性能，但是代理键维护代价很高，尤其是hive中事实表数据装载过程中
+s1,s2-->dim_product dt
+id,name,note
+
+s1,s2-->tmp_inc
+...from s1 where create_time >'t'
+...from s2 where create_time >'t'
+
+#hive中如何实现gid的自增(代理键)，在mysql中auto_increment
+#row_number() over (partition by userid order by timestamp desc) as visit_number
+
+# 从旧表中拿到max(gid), 新表cross join这个max(gid)这行记录，row_number() + max_id
+insert overwrite dim_product
+select 
+tb.*, 
+row_number() over(order by id) + max_id as gid
+from tmp_inc as tb
+cross join (select coalesce(max(gid),0) as max_id from dim_product) ta
+union all
+select * from dim_product where dt = 't';
+
+缓慢渐变维度：slow change dimension(带有start_date和end_date)
+拉链表：当维度数据发生变化时，将就数据设为为失效，将更改后的数据当做新的记录插入到维度表中并开始生效
+--select * from users where start_date <='theday' and end_date>='theday'
+
+拉链表怎么和事实表关联？
+---事实表装载代理键,维度表有start_date,end_date
+前提，仅仅对当前新增的订单
+(事实表)fact_order: oid,uid,tm_id
+(维度表)dim_user: uid,id,name,dept,start_date,end_date
+(业务表)order: oid,id,create_time,update_time
+---query: where create_time >'thedate' -->order_inc业务表一定要有create_time, update_time
+---------- 普通数据库
+select ta.*, tb.uid from
+order_inc as ta
+join 
+dim_user tb
+on ta_id = tb.id and ta.create_time >=tb.start_date and  create_time<=tb.end_date
+---------- hive数据库，hive join只能做=,不支持不等于，在我的版本中可以是用<>表示不等于
+selecct * from
+(
+select ta.*, tb.uid from
+order_inc as ta
+join 
+dim_user tb
+on ta_id = tab.id)
+where 
+create_time >=start_date and  create_time_time<=end_date;
+
+
+
+9.4）事实表设计：明细事实表，聚集事实表
+单事件事实表，流程事实表
+事实表储存方式：增量存储，全量快照，拉链(新增和变化的定期合并，带有start_date和end_date栏位, 和缓慢渐变维类似,反应变化，)
+
+----信用卡事实拉链表(基于增量)-----------
+credit_amount:card_id,user_id,amount,used_amount,create_time,update_time
+a)采集增量数据->s_credit_amount
+query: "select col_name* from  ... where update_time >='2019-12-01 00:00:00'
+
+b)dwd拉链表: d_credit_amount_l ---2019-11-30
+# 思路：拉链表left join增量表(设置已有记录的end_date),union all增量表
+drop table if exists tmp_credit_amount; //临时表
+
+create table tmp_credit_amount as
+select * from 
+(
+select
+    ta.card_id,ta.user_id,ta.amount,ta.used_amount,ta.create_time,ta.update_time,
+    ta.start_date,
+    (case when tb.card_id not null and ta.end_date>'2019-12-01' then '2019-11-30' else ta.end_date end) as end_date //已有记录是否发生变化
+    ,ta.load_time
+from
+    d_credit_amount_l as ta //拉链表
+left join //拉链表左连接增量表
+    s_credit_amount as tb // 增量数据
+    on ta.card_id=tb.card_id
+
+union all //新记录
+
+select
+    ta.card_id,ta.user_id,ta.amount,ta.used_amount,ta.create_time,ta.update_time,'2019-12-01' as start_date,'9999-12-31' as end_date //新记录启用时间
+    unix_timestamp() as load_time
+from s_credit_amount as ta //增量数据
+) tmp;
+
+# 改进：左表拉链表 end_date='9999-12-31'限定订单/信用卡最后的一笔记录， if(tb.id is null, ta.end_date, date_add(tb.dt,-1)) end_date//结束时间改为新变化时间-1
+
+# 上述结果插入拉链表
+insert overwrite into d_credit_amount_l
+select * from tmp_credit_amount;
+
+
+
+
+---------------基于全量快照数据做拉链(新增数据+变化数据(md5转换比较))-----------
+dwd:d_credit_amount_d -->d_credit_amount_l
+credit_amount:card_id,user_id,amount,used_amount,create_time,update_time
+# 思路1：新增和变化汇总，全量数据中相对前一天的新增和变化的结果写入拉链表
+# 思路2：根据create_time和update_time时间，得到新增变化表，和上面增量快照类似，left join和union all
+a)获取上日发生变化的数据从11-30到12-01，
+
+//从全量快照中昨日比较前日的新增和变化(不包括没有改变的)，得到一个当前的拉链表
+select 
+ta.*
+from
+
+(select
+    card_id,user_id,amount,used_amount,create_time //没有update_time栏位，不能跟踪变化
+    md5(concat(card_id,user_id,amount,used_amount,create_time)) as md5_flag
+from d_credit_amount_d where dt='2019-12-01') ta //全量快照表
+
+left join 
+
+(select
+    card_id,user_id,amount,used_amount,create_time //没有update_time栏位，不能跟踪变化
+    md5(concat(card_id,user_id,amount,used_amount,create_time)) as md5_flag
+from d_credit_amount_d where dt='2019-11-30') tb //全量快照表
+
+on ta.card_id=tab.card_id
+
+#where ta.md5_flag !=tb.md5_flag or tb.card_id is null;//不等于就发生变化，为空则是新增
+where ta.md5_flag <> tb.md5_flag or tb.card_id is null;//不等于就发生变化，为空则是新增
+#以上where条件过滤如果有update_time可以使用ta.update_time > tb.update_time?
+
+
+--------------------------------------------------------------
+## SQL
+# 一次查询全部table的行数，表名不能使用变量，所以GROUP_CONCAT(CONCAT())产生连接多个select语句
+# https://www.mysqltutorial.org/mysql-row-count/
+
+SELECT 
+    CONCAT(GROUP_CONCAT(CONCAT('SELECT \'',
+                        table_name,
+                        '\' table_name,COUNT(*) rows FROM ',
+                        table_name)
+                SEPARATOR ' UNION '),
+            ' ORDER BY table_name')
+INTO @sql 
+FROM
+    (SELECT 
+        table_name
+    FROM
+        information_schema.tables
+    WHERE
+        table_schema = 'classicmodels'
+            AND table_type = 'BASE TABLE') table_list
+
+

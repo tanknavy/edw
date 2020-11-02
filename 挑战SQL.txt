@@ -1,0 +1,80 @@
+蚂蚁森林低碳生活
+table_name: user_low_carbon
+user_id	date_dt	low_carbon
+用户	日期	减少碳排放(g)
+
+蚂蚁森林植物换购表
+table_name:	plant_carbon
+plant_id	plant_name	low_carbon
+
+第一题：2017/10/01之前符合条件的用户先申领一棵胡杨，然后剩下全部申领沙柳，请问申请沙柳的个数比后一位用户多多少个，取前10
+分步执行：
+
+1)或者在10月1日前low_carbon总和最大11人， datediff, regexp_replace正则化替代，还有正则化抽取
+select user_id,sum(low_carbon) low_carbon_sum
+from user_low_carbon
+where datediff(regexp_replace(date_dt,"/","-"), regexp_replace('2017/10/1',"/","-")) < 0
+group by user_id
+order by low_carbon_sum desc limit 11; t1
+
+2)查出"胡杨"所需的低碳量
+select low_carbon from plant_carbon where plant_id='p004'; t2
+
+3)查出"沙柳"所需的低碳量
+select low_carbon from plant_carbon where plant_id='p002'; t3
+
+4)计算申领一个胡杨后可以申领沙柳的棵树，round做四舍五入？
+select user_id,round((t1.low_carbon_sum-t2.low_carbon)/t3.low_carbon) plant_count,
+from t1,t2,t3;	t4
+
+5)和下一条记录相比， lead(column,1,0)中1表示下面第几个，0表示如果为null用0取代
+select user_id, plant_count, lead(plant_count,1,0) over(order by plant_count desc) as leadCount from t4;	t5
+
+6)计算最终插值
+select user_id,(plant_count-leadCount) from t5 limit 10;
+
+7)最终sql，注意：t1,t2,t3三表的关系是平行的，没有join关系，都一起放t4,t5的内查询中，也可以使用with ta as{}, tb as{} 先构建
+
+
+第二题：用户在2017年连续三天减少碳排放超过100g的用户流水，注意一天可能有多次记录
+分布执行：
+
+1）按照用户和时间聚合，计算每人每天在2017年的低碳量
+select user_id,data_dt,sum(low_carbon) low_carbon_sum from user_low_carbon
+where substring(data_dt,1,4)='2017'
+group by user_id,data_dt,
+having low_carbon_sum>100; t1
+
+2A)连续三天方法一：将每天数据的前后各两条数据的时间放在一行，默认值为(1970/1/1)
+select user_id,
+	data_dt,
+	lag(data_dt,2,"1970/01/01") over(partition by user_id) as lag2Date,
+	lag(data_dt,1,"1970/01/01") over(partition by user_id) as lag1Date,
+	lead(data_dt,1,"1970/01/01") over(partition by user_id) as lead1Date,
+	lead(data_dt,2,"1970/01/01") over(partition by user_id) as lead2Date
+from t1; t2
+
+3)计算每天数据时间与前后两条数据之间的差值
+
+2B)连续三天方法二：两个等差数列，这里gourp by和 over一起用，
+select user_id,data_dt,sum(low_carbon) low_carbon_sum,
+row_number() over(partition by user_id order by date_dt) as rn
+from user_low_carbon
+where substring(data_dt,1,4)='2017'
+group by user_id,data_dt,
+having low_carbon_sum>100; t1
+
+3B)获得每一天时间和标签之间的差值
+select user_id, data_dt, data_sub(to_date(regexp_replace(data_dt,"/","-")),rn) diffDate from t1; t2
+
+3B)按照所获得的差值over聚合(按照用户，日期差值分区)，得到同一个用户下不同差值的个数, 
+select user_id, data_dt, count(*) over(partition by user_id, diffDate) diffDateCount from t2; t3
+
+4B)过滤出相同差值个数在3以及3以上的数据(用户，日期都求出来了)
+select user_id,data_dt from t3 where diffDateCount>=3;	t4
+
+5)满足条件的用户的流水，还要与原表join得到最终需要的结果
+select t0.user_id,t0.data_dt,t0.low_carbon from user_low_carbon t0 join t4 on t0.user_id = t4.user_id and t0.date_dt = t4.date_dt
+
+2C)连续三天方法三：mapreduce实现
+	
